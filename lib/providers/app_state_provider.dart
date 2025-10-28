@@ -9,19 +9,31 @@ class AppStateProvider extends ChangeNotifier {
   final ApiService _apiService = ApiService();
   final AuthService _authService = AuthService();
 
-  User? _user;
+  User? _user; // Station-linked user (from QR)
+  User? _appUser; // App registered user (from login/register)
   List<Transaction> _transactions = [];
   Map<String, dynamic>? _userStats;
   bool _isLoading = false;
   String? _baseUrl;
+  
+  // Dummy user database (for MVP - replace with real backend)
+  final Map<String, Map<String, String>> _dummyUsers = {
+    'demo@trash2cash.com': {
+      'name': 'Demo User',
+      'email': 'demo@trash2cash.com',
+      'password': 'demo123',
+    },
+  };
 
   // Getters
   User? get user => _user;
+  User? get appUser => _appUser;
   List<Transaction> get transactions => _transactions;
   Map<String, dynamic>? get userStats => _userStats;
   bool get isLoading => _isLoading;
   String? get baseUrl => _baseUrl;
   bool get isLoggedIn => _user != null;
+  bool get isAppUserLoggedIn => _appUser != null;
 
   AppStateProvider() {
     _initializeApp();
@@ -36,7 +48,10 @@ class AppStateProvider extends ChangeNotifier {
       // Load base URL
       _baseUrl = await _authService.loadBaseUrl();
       
-      // Try to load saved session
+      // Try to load saved app user session
+      _appUser = await _authService.loadAppUserSession();
+      
+      // Try to load saved station session
       _user = await _authService.loadSession();
       
       if (_user != null) {
@@ -47,6 +62,100 @@ class AppStateProvider extends ChangeNotifier {
       }
     } catch (e) {
       print('Initialization error: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // Login with credentials (for app login)
+  Future<void> loginWithCredentials(String email, String password) async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      // Check dummy users
+      final userData = _dummyUsers[email.toLowerCase()];
+      if (userData == null || userData['password'] != password) {
+        throw Exception('Invalid email or password');
+      }
+
+      // Create app user
+      _appUser = User(
+        id: 'app_${DateTime.now().millisecondsSinceEpoch}',
+        name: userData['name']!,
+        email: email.toLowerCase(),
+        points: 0,
+      );
+
+      // Save app user session
+      await _authService.saveAppUserSession(_appUser!);
+      
+      notifyListeners();
+    } catch (e) {
+      _isLoading = false;
+      notifyListeners();
+      rethrow;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // Register new user
+  Future<void> registerUser(String name, String email, String password) async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      // Check if user already exists
+      if (_dummyUsers.containsKey(email.toLowerCase())) {
+        throw Exception('Email already registered');
+      }
+
+      // Add to dummy users
+      _dummyUsers[email.toLowerCase()] = {
+        'name': name,
+        'email': email.toLowerCase(),
+        'password': password,
+      };
+
+      // Create app user
+      _appUser = User(
+        id: 'app_${DateTime.now().millisecondsSinceEpoch}',
+        name: name,
+        email: email.toLowerCase(),
+        points: 0,
+      );
+
+      // Save app user session
+      await _authService.saveAppUserSession(_appUser!);
+      
+      notifyListeners();
+    } catch (e) {
+      _isLoading = false;
+      notifyListeners();
+      rethrow;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // Link station with QR code (after app login)
+  Future<void> linkStationWithQr(String qrToken) async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      _user = await _authService.loginWithQrCode(qrToken);
+      await loadTransactions();
+      await loadUserStats();
+      notifyListeners();
+    } catch (e) {
+      _isLoading = false;
+      notifyListeners();
+      rethrow;
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -207,6 +316,7 @@ class AppStateProvider extends ChangeNotifier {
     await _authService.logout();
     disconnectWebSocket();
     _user = null;
+    _appUser = null;
     _transactions = [];
     _userStats = null;
     notifyListeners();

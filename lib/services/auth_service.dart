@@ -7,6 +7,7 @@ class AuthService {
   static const String _keyUser = 'user_data';
   static const String _keyToken = 'session_token';
   static const String _keyBaseUrl = 'base_url';
+  static const String _keyAppUser = 'app_user_data'; // For app login
 
   final ApiService _apiService = ApiService();
 
@@ -40,7 +41,29 @@ class AuthService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keyUser);
     await prefs.remove(_keyToken);
+    await prefs.remove(_keyAppUser);
     ApiService.setSessionToken(null);
+  }
+
+  // Save app user session (for login/register)
+  Future<void> saveAppUserSession(User user) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyAppUser, jsonEncode(user.toJson()));
+  }
+
+  // Load app user session
+  Future<User?> loadAppUserSession() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userData = prefs.getString(_keyAppUser);
+
+      if (userData != null) {
+        return User.fromJson(jsonDecode(userData));
+      }
+    } catch (e) {
+      print('Failed to load app user session: $e');
+    }
+    return null;
   }
 
   // Login with QR code
