@@ -15,15 +15,6 @@ class AppStateProvider extends ChangeNotifier {
   Map<String, dynamic>? _userStats;
   bool _isLoading = false;
   String? _baseUrl;
-  
-  // Dummy user database (for MVP - replace with real backend)
-  final Map<String, Map<String, String>> _dummyUsers = {
-    'demo@trash2cash.com': {
-      'name': 'Demo User',
-      'email': 'demo@trash2cash.com',
-      'password': 'demo123',
-    },
-  };
 
   // Getters
   User? get user => _user;
@@ -74,22 +65,8 @@ class AppStateProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Check dummy users
-      final userData = _dummyUsers[email.toLowerCase()];
-      if (userData == null || userData['password'] != password) {
-        throw Exception('Invalid email or password');
-      }
-
-      // Create app user
-      _appUser = User(
-        id: 'app_${DateTime.now().millisecondsSinceEpoch}',
-        name: userData['name']!,
-        email: email.toLowerCase(),
-        points: 0,
-      );
-
-      // Save app user session
-      await _authService.saveAppUserSession(_appUser!);
+      // Call backend login API
+      _appUser = await _authService.login(email, password);
       
       notifyListeners();
     } catch (e) {
@@ -102,35 +79,35 @@ class AppStateProvider extends ChangeNotifier {
     }
   }
 
-  // Register new user
+  // Register new user with backend
   Future<void> registerUser(String name, String email, String password) async {
     _isLoading = true;
     notifyListeners();
 
     try {
-      // Check if user already exists
-      if (_dummyUsers.containsKey(email.toLowerCase())) {
-        throw Exception('Email already registered');
-      }
-
-      // Add to dummy users
-      _dummyUsers[email.toLowerCase()] = {
-        'name': name,
-        'email': email.toLowerCase(),
-        'password': password,
-      };
-
-      // Create app user
-      _appUser = User(
-        id: 'app_${DateTime.now().millisecondsSinceEpoch}',
-        name: name,
-        email: email.toLowerCase(),
-        points: 0,
-      );
-
-      // Save app user session
-      await _authService.saveAppUserSession(_appUser!);
+      // Call backend registration API
+      _appUser = await _authService.register(name, email, password);
       
+      notifyListeners();
+    } catch (e) {
+      _isLoading = false;
+      notifyListeners();
+      rethrow;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // Verify QR token with credentials (for QR-based login)
+  Future<void> verifyAndLoginWithQr(String token, String email, String password) async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      _user = await _authService.verifyQrToken(token, email, password);
+      await loadTransactions();
+      await loadUserStats();
       notifyListeners();
     } catch (e) {
       _isLoading = false;

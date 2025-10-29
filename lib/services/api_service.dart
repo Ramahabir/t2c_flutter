@@ -6,7 +6,7 @@ import '../models/transaction.dart';
 import '../models/redemption_request.dart';
 
 class ApiService {
-  static String _baseUrl = 'http://192.168.1.50:8080'; // Default LAN address
+  static String _baseUrl = 'http://10.77.61.115:8080'; // Default LAN address
   static String? _sessionToken;
   WebSocketChannel? _wsChannel;
 
@@ -34,7 +34,138 @@ class ApiService {
     return headers;
   }
 
-  // QR Code Login - Authenticate via scanned QR token
+  // Register new user
+  Future<Map<String, dynamic>> register(String name, String email, String password) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/api/auth/register'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'name': name,
+          'email': email,
+          'password': password,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(response.body);
+        if (data['sessionToken'] != null) {
+          _sessionToken = data['sessionToken'];
+        }
+        return data;
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['message'] ?? 'Registration failed');
+      }
+    } catch (e) {
+      throw Exception('Failed to register: $e');
+    }
+  }
+
+  // Traditional login with email and password
+  // Note: This uses the register endpoint approach or you may need to add a /api/auth/login endpoint on backend
+  Future<Map<String, dynamic>> login(String email, String password) async {
+    try {
+      // If your backend has a /api/auth/login endpoint, update this URL
+      final response = await http.post(
+        Uri.parse('$_baseUrl/api/auth/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': email,
+          'password': password,
+        }),
+      );
+
+      print('Login response status: ${response.statusCode}');
+      print('Login response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        // Check if response body is empty or null
+        if (response.body.isEmpty) {
+          throw Exception('Empty response from server');
+        }
+        
+        final data = jsonDecode(response.body);
+        
+        // Check if data is null or not a Map
+        if (data == null) {
+          throw Exception('Null response from server');
+        }
+        
+        if (data is! Map<String, dynamic>) {
+          throw Exception('Invalid response format from server');
+        }
+        
+        // Extract token from nested data structure if present
+        if (data.containsKey('data') && data['data'] != null) {
+          final nestedData = data['data'] as Map<String, dynamic>;
+          if (nestedData['token'] != null) {
+            _sessionToken = nestedData['token'];
+          }
+        } else if (data['sessionToken'] != null) {
+          _sessionToken = data['sessionToken'];
+        } else if (data['token'] != null) {
+          _sessionToken = data['token'];
+        }
+        
+        return data;
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['message'] ?? 'Login failed');
+      }
+    } catch (e) {
+      throw Exception('Failed to login: $e');
+    }
+  }
+
+  // Generate QR code for login
+  Future<Map<String, dynamic>> generateQrLogin() async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/api/auth/qr-login'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data; // Returns { token, qrCode, expiresAt }
+      } else {
+        throw Exception('Failed to generate QR code');
+      }
+    } catch (e) {
+      throw Exception('Failed to generate QR login: $e');
+    }
+  }
+
+  // Verify QR token with credentials
+  Future<Map<String, dynamic>> verifyQrToken(String token, String email, String password) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/api/auth/verify-token'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'token': token,
+          'email': email,
+          'password': password,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['sessionToken'] != null) {
+          _sessionToken = data['sessionToken'];
+        }
+        return data;
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['message'] ?? 'Token verification failed');
+      }
+    } catch (e) {
+      throw Exception('Failed to verify token: $e');
+    }
+  }
+
+  // QR Code Login - Authenticate via scanned QR token (kept for backward compatibility)
   Future<User> loginWithQrToken(String qrToken) async {
     try {
       final response = await http.post(
